@@ -215,6 +215,165 @@ array boundary(const array &in, const array &mask)
     return ret_val;
 }
 
+array threshold(const array &in, float thresholdValue)
+{
+    int channels = in.dims(2);
+    array ret_val= in.copy();
+    if (channels>1)
+        ret_val = colorspace(in,af_gray,af_rgb);
+    ret_val = (ret_val<thresholdValue)*0.0f + 255.0f*(ret_val>thresholdValue);
+    return ret_val;
+}
+
+array otsu(const array& in)
+{
+    array gray = colorspace(in,af_gray,af_rgb);
+    unsigned total = gray.elements();
+    array hist = histogram(gray,256,0.0f,255.0f);
+    float *h_hist = hist.host<float>();
+
+    float sum = 0.0f;
+    for (int i = 1; i < 256; ++i)
+        sum += i * h_hist[i];
+    float sumB = 0.0f;
+    float wB = 0.0f;
+    float wF = 0.0f;
+    float mB;
+    float mF;
+    float max = 0.0f;
+    float between = 0.0f;
+    float threshold1 = 0.0f;
+    float threshold2 = 0.0f;
+    for (int i = 0; i < 256; ++i) {
+        wB += h_hist[i];
+        if (wB == 0)
+            continue;
+        wF = total - wB;
+        if (wF == 0)
+            break;
+        sumB += i * h_hist[i];
+        mB = sumB / wB;
+        mF = (sum - sumB) / wF;
+        between = wB * wF * pow(mB - mF, 2);
+        if ( between >= max ) {
+            threshold1 = i;
+            if ( between > max ) {
+                threshold2 = i;
+            }
+            max = between;
+        }
+    }
+    array::free(h_hist);
+    return threshold(gray,(threshold1+threshold2)/2.0f);
+}
+
+inline int getWeight(int start, int end, int* hist)
+{
+    int sum = 0;
+    for(int k=start;k<end;++k)
+        sum += hist[k];
+    return sum;
+}
+
+typedef enum {
+    MEAN=0,
+    MEDIAN,
+    MINMAX_AVG
+} LocalThresholdType;
+
+array adaptiveThreshold(const array &in, LocalThresholdType kind, int window_size, int constnt)
+{
+    int wr = window_size;
+    array ret_val = colorspace(in,af_gray,af_rgb);
+    if (kind==MEAN) {
+        array wind = constant(1,wr,wr)/(wr*wr);
+        array mean = convolve(ret_val,wind);
+        array diff = mean - ret_val;
+        ret_val    = (diff<constnt)*0.f + 255.f*(diff>constnt);
+    } else if (kind==MEDIAN) {
+        array medf = medfilt(ret_val,wr,wr);
+        array diff = medf - ret_val;
+        ret_val    = (diff<constnt)*0.f + 255.f*(diff>constnt);
+    } else if (kind==MINMAX_AVG) {
+        array minf = minfilt(ret_val,wr,wr);
+        array maxf = maxfilt(ret_val,wr,wr);
+        array mean = (minf+maxf)/2.0f;
+        array diff = mean - ret_val;
+        ret_val    = (diff<constnt)*0.f + 255.f*(diff>constnt);
+    }
+    ret_val = 255.f - ret_val;
+    return ret_val;
+}
+
+array iterativeThreshold(const array &in)
+{
+    array ret_val = colorspace(in,af_gray,af_rgb);
+    float T = mean<float>(ret_val);
+    bool isContinue = true;
+    while(isContinue) {
+        array region1 = (ret_val > T)*ret_val;
+        array region2 = (ret_val <= T)*ret_val;
+        float r1_avg  = mean<float>(region1);
+        float r2_avg  = mean<float>(region2);
+        float tempT = (r1_avg+r2_avg)/2.0f;
+        if (abs(tempT-T)<0.01f) {
+            break;
+        }
+        T = tempT;
+    }
+    return threshold(ret_val,T);
+}
+
+/**
+ * azimuth range is [0-360]
+ * elevation range is [0-180]
+ * depth range is [1-100]
+ * Note: this function has been tailored after
+ * the emboss implementation in GIMP editor
+ **/
+array emboss(const array &input, float azimuth, float elevation, float depth)
+{
+    if (depth<1 || depth>100) {
+        printf("Depth should be in the range of 1-100");
+        return input;
+    }
+    static float x[3] = {-1,0,1};
+    static array hg(3,x);
+    static array vg = hg.T();
+
+    array in = input;
+    if (in.dims(2)>1)
+        in = colorspace(input,af_gray,af_rgb);
+    else
+        in = input;
+
+    // convert angles to radians
+    float phi   = elevation*af::Pi/180.0f;
+    float theta = azimuth*af::Pi/180.0f;
+
+    // compute light pos in cartesian coordinates
+    // and scale with maximum intensity
+    // phi will effect the amount of we intend to put
+    // on a pixel
+    float pos[3];
+    pos[0] = 255.99f * cos(phi)*cos(theta);
+    pos[1] = 255.99f * cos(phi)*sin(theta);
+    pos[2] = 255.99f * sin(phi);
+
+    // compute gradient vector
+    array gx = filter(in,vg);
+    array gy = filter(in,hg);
+
+    float pxlz  = (6*255.0f)/depth;
+    array zdepth= constant(pxlz,gx.dims());
+    array vdot  = gx*pos[0] + gy*pos[1] + pxlz*pos[2];
+    array outwd = vdot < 0.0f;
+    array norm  = vdot/sqrt(gx*gx+gy*gy+zdepth*zdepth);
+
+    array color = outwd * 0.0f + (1-outwd) * norm;
+    return color;
+}
+
 int main(int argc, char **argv)
 {
     try {
@@ -222,72 +381,88 @@ int main(int argc, char **argv)
         af::deviceset(device);
         af::info();
 
-        array a = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/lena512x512.jpg",true);
-        array fight = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/fight.jpg",true);
-        array nature = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/nature.jpg",true);
+        array man       = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part1/man.jpg",true);
+        array fight     = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part1/fight.jpg",true);
+        array nature    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part1/nature.jpg",true);
+        array lena      = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part2/lena512x512.jpg",true);
+        array sudoku    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/sudoku.jpg",true);
+        array bimodal   = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/bimodal.jpg",true);
+        array spider    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/spider.jpg",true);
+        array arrow     = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/arrow.jpg",true);
 
         array intensity = colorspace(fight,af_gray,af_rgb);
-        array mask  = clamp(intensity,10.0f,255.0f)>0.0f;
-        array blend = alphaBlend(fight,nature,mask);
+        array mask      = clamp(intensity,10.0f,255.0f)>0.0f;
+        array blend     = alphaBlend(fight,nature,mask);
+        array highcon   = changeContrast(man,0.3);
+        array highbright= changeBrightness(man,0.2);
+        array translated= translate(man,100,100,200,126);
+        array sharp     = usm(man,3,1.2);
+        array zoom      = digZoom(man,28,10,192,192);
 
-        array highcon = changeContrast(a,0.3);
-        array highbright = changeBrightness(a,0.2);
-        array translated = translate(a,100,100,200,126);
-        array sharp = usm(a,3,1.2);
-        array zoom = digZoom(a,28,10,192,192);
-
-        fig("sub",3,3,1); image(a/255); fig("title","Input");
-        fig("sub",3,3,2); image(highcon/255); fig("title","High Contrast");
-        fig("sub",3,3,3); image(highbright/255); fig("title","High Brightness");
-        fig("sub",3,3,4); image(translated/255); fig("title","Translation");
-        fig("sub",3,3,5); image(sharp/255); fig("title","Unsharp Masking");
-        fig("sub",3,3,6); image(zoom/255); fig("title","Digital Zoom");
-        fig("sub",3,3,7); image(nature/255); fig("title","Background for blend");
-        fig("sub",3,3,8); image(fight/255); fig("title","Foreground for blend");
-        fig("sub",3,3,9); image(blend/255); fig("title","Alpha blend");
+        fig("sub",3,3,1); image(man/255);           fig("title","Input");
+        fig("sub",3,3,2); image(highcon/255);       fig("title","High Contrast");
+        fig("sub",3,3,3); image(highbright/255);    fig("title","High Brightness");
+        fig("sub",3,3,4); image(translated/255);    fig("title","Translation");
+        fig("sub",3,3,5); image(sharp/255);         fig("title","Unsharp Masking");
+        fig("sub",3,3,6); image(zoom/255);          fig("title","Digital Zoom");
+        fig("sub",3,3,7); image(nature/255);        fig("title","Background for blend");
+        fig("sub",3,3,8); image(fight/255);         fig("title","Foreground for blend");
+        fig("sub",3,3,9); image(blend/255);         fig("title","Alpha blend");
         getchar();
 
         array prew_mag, prew_dir;
         array sob_mag, sob_dir;
-        array lena1ch = colorspace(a,af_gray,af_rgb);
+        array lena1ch = colorspace(lena,af_gray,af_rgb);
         prewitt(prew_mag,prew_dir,lena1ch);
         sobel(sob_mag,sob_dir,lena1ch);
-        array sprd  = spread(a,3,3);
-        array hrl   = hurl(a,10,1);
-        array pckng = pick(a,40,2);
-        array difog = dog(a,1,2);
+        array sprd  = spread(lena,3,3);
+        array hrl   = hurl(lena,10,1);
+        array pckng = pick(lena,40,2);
+        array difog = dog(lena,1,2);
         array bil   = bilateral(hrl,3.0f,40.0f);
         array mf    = medianfilter(hrl,5,5);
         array gb    = gaussianblur(hrl,3,3,0.8);
 
-        fig("sub",3,3,1); image(hrl/255); fig("title","Hurl noise");
-        fig("sub",3,3,2); image(gb/255); fig("title","Gaussian blur");
-        fig("sub",3,3,3); image(bil/255); fig("title","Bilateral filter on hurl noise");
-        fig("sub",3,3,4); image(mf/255); fig("title","Median filter on hurl noise");
-        fig("sub",3,3,5); image(prew_mag/255); fig("title","Prewitt edge filter");
-        fig("sub",3,3,6); image(sob_mag/255); fig("title","Sobel edge filter");
-        fig("sub",3,3,7); image(sprd/255); fig("title","Spread filter");
-        fig("sub",3,3,8); image(pckng/255); fig("title","Pick filter");
-        fig("sub",3,3,9); image(difog/255); fig("title","Difference of gaussians(3x3 and 5x5)");
+        fig("sub",3,3,1); image(hrl/255);           fig("title","Hurl noise");
+        fig("sub",3,3,2); image(gb/255);            fig("title","Gaussian blur");
+        fig("sub",3,3,3); image(bil/255);           fig("title","Bilateral filter on hurl noise");
+        fig("sub",3,3,4); image(mf/255);            fig("title","Median filter on hurl noise");
+        fig("sub",3,3,5); image(prew_mag/255);      fig("title","Prewitt edge filter");
+        fig("sub",3,3,6); image(sob_mag/255);       fig("title","Sobel edge filter");
+        fig("sub",3,3,7); image(sprd/255);          fig("title","Spread filter");
+        fig("sub",3,3,8); image(pckng/255);         fig("title","Pick filter");
+        fig("sub",3,3,9); image(difog/255);         fig("title","Difference of gaussians(3x3 and 5x5)");
         getchar();
 
         array morph_mask= constant(1,3,3);
-        array bdry      = boundary(a,morph_mask);
-        fig("sub",1,1,1); image(bdry/255); fig("title","Boundary extraction using morph ops");
+        array bdry      = boundary(lena,morph_mask);
+        fig("sub",1,1,1); image(bdry/255);          fig("title","Boundary extraction using morph ops");
         getchar();
 
-        normalizeImage(prew_mag);
-        normalizeImage(sob_mag);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/hurl.jpg",hrl);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/gblur.jpg",gb);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/bilateral.jpg",bil);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/medfilt.jpg",mf);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/prewitt.jpg",prew_mag);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/sobel.jpg",sob_mag);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/spread.jpg",sprd);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/pick.jpg",pckng);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/dog.jpg",difog);
-        saveimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/bdry.jpg",bdry);
+        array bt = threshold(bimodal,180.0f);
+        array ot = otsu(bimodal);
+        array mnt= adaptiveThreshold(sudoku,MEAN,37,10);
+        array mdt= adaptiveThreshold(sudoku,MEDIAN,7,4);
+        array mmt= adaptiveThreshold(sudoku,MINMAX_AVG,11,4);
+        array itt= 255.0f-iterativeThreshold(sudoku);
+        array emb= emboss(arrow,45,20,10);
+
+        fig("sub",2,3,1); image(sudoku/255);        fig("title","Input");
+        fig("sub",2,3,2); image(mnt);               fig("title","Adap. Threshold(Mean)");
+        fig("sub",2,3,3); image(mdt);               fig("title","Adap. Threshold(Median)");
+        fig("sub",2,3,4); image(mmt);               fig("title","Adap. Threshold(Avg. Min,Max)");
+        fig("sub",2,3,5); image(itt);               fig("title","Iterative Threshold");
+        getchar();
+
+        fig("sub",3,1,1); image(bimodal/255);       fig("title","Input");
+        fig("sub",3,1,2); image(bt);                fig("title","Simple Binary threshold");
+        fig("sub",3,1,3); image(ot);                fig("title","Otsu's Threshold");
+        getchar();
+
+        fig("sub",2,1,1); image(arrow/255);         fig("title","Input");
+        fig("sub",2,1,2); image(emb);               fig("title","Emboss effect");
+        getchar();
+
     } catch (af::exception& e) {
         fprintf(stderr, "%s\n", e.what());
         throw;
