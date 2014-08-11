@@ -240,7 +240,6 @@ array otsu(const array& in)
         gray  = in;
     unsigned total = gray.elements();
     array hist  = histogram(gray,256,0.0f,255.0f);
-    array cond  = hist>0.0f;    // use this condition to limit computation
     array wts   = array(seq(256));
 
     array wtB   = accum(hist);
