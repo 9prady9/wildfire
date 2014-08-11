@@ -225,45 +225,37 @@ array threshold(const array &in, float thresholdValue)
     return ret_val;
 }
 
+/**
+ * Note:
+ * suffix B indicates subset of all graylevels before current gray level
+ * suffix F indicates subset of all graylevels after current gray level
+ */
 array otsu(const array& in)
 {
-    array gray = colorspace(in,af_gray,af_rgb);
+    array gray;
+    int channels = in.dims(2);
+    if (channels>1)
+        gray  = colorspace(in,af_gray,af_rgb);
+    else
+        gray  = in;
     unsigned total = gray.elements();
-    array hist = histogram(gray,256,0.0f,255.0f);
-    float *h_hist = hist.host<float>();
+    array hist  = histogram(gray,256,0.0f,255.0f);
+    array cond  = hist>0.0f;    // use this condition to limit computation
+    array wts   = array(seq(256));
 
-    float sum = 0.0f;
-    for (int i = 1; i < 256; ++i)
-        sum += i * h_hist[i];
-    float sumB = 0.0f;
-    float wB = 0.0f;
-    float wF = 0.0f;
-    float mB;
-    float mF;
-    float max = 0.0f;
-    float between = 0.0f;
-    float threshold1 = 0.0f;
-    float threshold2 = 0.0f;
-    for (int i = 0; i < 256; ++i) {
-        wB += h_hist[i];
-        if (wB == 0)
-            continue;
-        wF = total - wB;
-        if (wF == 0)
-            break;
-        sumB += i * h_hist[i];
-        mB = sumB / wB;
-        mF = (sum - sumB) / wF;
-        between = wB * wF * pow(mB - mF, 2);
-        if ( between >= max ) {
-            threshold1 = i;
-            if ( between > max ) {
-                threshold2 = i;
-            }
-            max = between;
-        }
-    }
-    array::free(h_hist);
+    array wtB   = accum(hist);
+    array wtF   = total - wtB;
+    array sumB  = accum(wts*hist);
+    array meanB = sumB/wtB;
+    array meanF = (sumB(255)-sumB) / wtF;
+    array mDiff = meanB-meanF;
+
+    array interClsVar= wtB * wtF * mDiff * mDiff;
+    float max        = af::max<float>(interClsVar);
+    float threshold2 = where(interClsVar==max).scalar<float>();
+    array threshIdx  = where(interClsVar>=max);
+    float threshold1 = threshIdx.elements()>0 ? threshIdx.scalar<float>() : 0.0f;
+
     return threshold(gray,(threshold1+threshold2)/2.0f);
 }
 
@@ -385,10 +377,10 @@ int main(int argc, char **argv)
         array fight     = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part1/fight.jpg",true);
         array nature    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part1/nature.jpg",true);
         array lena      = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part2/lena512x512.jpg",true);
-        array sudoku    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/sudoku.jpg",true);
-        array bimodal   = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/bimodal.jpg",true);
-        array spider    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/spider.jpg",true);
-        array arrow     = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/arrow.jpg",true);
+        array sudoku    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part3/sudoku.jpg",true);
+        array bimodal   = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part3/bimodal.jpg",true);
+        array spider    = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part3/spider.jpg",true);
+        array arrow     = loadimage("/home/pradeep/gitroot/trailsground/blog_posts/imageediting/part3/arrow.jpg",true);
 
         array intensity = colorspace(fight,af_gray,af_rgb);
         array mask      = clamp(intensity,10.0f,255.0f)>0.0f;
@@ -462,7 +454,6 @@ int main(int argc, char **argv)
         fig("sub",2,1,1); image(arrow/255);         fig("title","Input");
         fig("sub",2,1,2); image(emb);               fig("title","Emboss effect");
         getchar();
-
     } catch (af::exception& e) {
         fprintf(stderr, "%s\n", e.what());
         throw;
