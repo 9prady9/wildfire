@@ -1,5 +1,6 @@
-#include <stdio.h>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <arrayfire.h>
 #include <af/utils.h>
 
