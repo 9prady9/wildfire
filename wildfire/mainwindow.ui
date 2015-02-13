@@ -26,7 +26,7 @@
      <x>0</x>
      <y>0</y>
      <width>742</width>
-     <height>24</height>
+     <height>29</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -41,7 +41,12 @@
     <property name="title">
      <string>Edit</string>
     </property>
+    <addaction name="actionBrightness_Modify_Sample"/>
     <addaction name="actionComing_soon"/>
+    <addaction name="actionImage_Translation_Sample"/>
+    <addaction name="actionDigital_Zoom_Sample"/>
+    <addaction name="actionAlpha_Blend_Sample"/>
+    <addaction name="actionUnsharp_Mask_Sample"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -81,7 +86,32 @@
   </action>
   <action name="actionComing_soon">
    <property name="text">
-    <string>Coming soon</string>
+    <string>Contrast Modify Sample</string>
+   </property>
+  </action>
+  <action name="actionBrightness_Modify_Sample">
+   <property name="text">
+    <string>Brightness Modify Sample</string>
+   </property>
+  </action>
+  <action name="actionImage_Translation_Sample">
+   <property name="text">
+    <string>Image Translation Sample</string>
+   </property>
+  </action>
+  <action name="actionDigital_Zoom_Sample">
+   <property name="text">
+    <string>Digital Zoom Sample</string>
+   </property>
+  </action>
+  <action name="actionAlpha_Blend_Sample">
+   <property name="text">
+    <string>Alpha Blend Sample</string>
+   </property>
+  </action>
+  <action name="actionUnsharp_Mask_Sample">
+   <property name="text">
+    <string>Unsharp Mask Sample</string>
    </property>
   </action>
  </widget>
