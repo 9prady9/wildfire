@@ -12,6 +12,10 @@ ImageCanvas::ImageCanvas(QWidget *parent, QGLWidget *shareWidget)
 
 ImageCanvas::~ImageCanvas()
 {
+    vertices.clear();
+    texCoords.clear();
+    glDeleteTextures(1, &texture);
+    delete program;
 }
 
 QSize ImageCanvas::minimumSizeHint() const
@@ -30,25 +34,36 @@ void ImageCanvas::setClearColor(const QColor &color)
     updateGL();
 }
 
-void ImageCanvas::updateImage(const QImage &fImage)
+void ImageCanvas::updateImage(float *ptr, int w, int h, int ch)
 {
-    glDeleteTextures(1,&texture);
+    GLint format = GL_RGBA;
+    switch(ch) {
+        case 1: format = GL_RED; break;
+        case 3: format = GL_RGB; break;
+        case 4: format = GL_RGBA; break;
+    }
+    mCurrFormat = format;
+    if (texture>0)
+        glDeleteTextures(1,&texture);
     // create texture object
     glGenTextures( 1, &texture );
-    glBindTexture( GL_TEXTURE_2D, texture );
+    glBindTexture( GL_TEXTURE_2D, texture);
     // set basic parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Create texture data (4-component unsigned byte)
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 fImage.width(), fImage.height(), 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE,
-                 (const GLvoid*)fImage.bits());
+    glTexImage2D(GL_TEXTURE_2D, 0, mCurrFormat, w, h, 0, mCurrFormat, GL_FLOAT, ptr);
     // Unbind the texture
     glBindTexture(GL_TEXTURE_2D, 0);
     update();
+}
+
+void ImageCanvas::updateTexData(const float *ptr, unsigned w, unsigned h)
+{
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, mCurrFormat, GL_FLOAT, (void*)ptr);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void ImageCanvas::initializeGL()
@@ -81,6 +96,7 @@ void ImageCanvas::initializeGL()
 
     QGLShader *fshader = new QGLShader(QGLShader::Fragment, this);
     const char *fsrc =
+        "uniform bool isGrayScale;\n"
         "uniform bool isTex;\n"
         "uniform sampler2D texture;\n"
         "varying mediump vec4 texc;\n"
@@ -95,10 +111,15 @@ void ImageCanvas::initializeGL()
         "}\n"
         "void main(void)\n"
         "{\n"
+        "   vec4 texCol;\n"
         "    if (isTex)"
-        "       gl_FragColor = texture2D(texture, vec2(texc.s,1-texc.t));\n"
+        "       texCol = texture2D(texture, vec2(texc.s,1-texc.t));\n"
         "    else"
-        "       gl_FragColor = checker(texc);"
+        "       texCol = checker(texc);"
+        "    if (isGrayScale)\n"
+        "       gl_FragColor = vec4(texCol.r, texCol.r, texCol.r, 1.0);\n"
+        "    else\n"
+        "       gl_FragColor = texCol;\n"
         "}\n";
     fshader->compileSourceCode(fsrc);
 
@@ -119,7 +140,7 @@ void ImageCanvas::paintGL()
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     QMatrix4x4 m;
-    m.ortho(-0.5f, +0.5f, +0.5f, -0.5f, 4.0f, 15.0f);
+    m.ortho(-1.0f, +1.0f, +1.0f, -1.0f, 4.0f, 15.0f);
     m.translate(0.0f, 0.0f, -10.0f);
 
     program->setUniformValue("matrix", m);
@@ -130,6 +151,7 @@ void ImageCanvas::paintGL()
     program->setAttributeArray
         (PROGRAM_TEXCOORD_ATTRIBUTE, texCoords.constData());
     program->setUniformValue("isTex", texture>0);
+    program->setUniformValue("isGrayScale", mCurrFormat==GL_RED);
     glBindTexture(GL_TEXTURE_2D, texture);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }

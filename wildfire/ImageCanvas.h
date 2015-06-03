@@ -19,7 +19,8 @@ public:
     QSize minimumSizeHint() const;
     QSize sizeHint() const;
     void setClearColor(const QColor &color);
-    void updateImage(const QImage &);
+    void updateImage(float *ptr, int w, int h, int ch);
+    void updateTexData(const float* ptr, unsigned w, unsigned h);
 
 signals:
     void clicked();
@@ -38,6 +39,7 @@ private:
     QColor clearColor;
     QPoint lastPos;
     GLuint texture;
+    GLint  mCurrFormat;
     QVector<QVector3D> vertices;
     QVector<QVector2D> texCoords;
     QGLShaderProgram *program;
