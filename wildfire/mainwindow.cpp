@@ -41,7 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
     mRenderCanvas = new ImageCanvas();
     this->setCentralWidget(mRenderCanvas);
     connect(ui->actionOpen, SIGNAL(triggered()), this, SLOT(loadImage()));
-    connect(ui->actionSave, SIGNAL(triggered()), this, SLOT(saveImage()));
+    //connect(ui->actionSave, SIGNAL(triggered()), this, SLOT(saveImage()));
     connect(ui->actionExit, SIGNAL(triggered()), QApplication::instance(), SLOT(quit()));
     connect(ui->contrastSlider, SIGNAL(valueChanged(int)), this, SLOT(contrastChanged(int)));
     connect(ui->brightnessSlider, SIGNAL(valueChanged(int)), this, SLOT(brightnessChanged(int)));

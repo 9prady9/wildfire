@@ -9,13 +9,15 @@ QT += core gui opengl
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 TARGET = wildfire
-#CONFIG += console
 TEMPLATE = app
 
 DEFINES += NOMINMAX
-INCLUDEPATH += E:\CodeWorks\gitroot\arrayfire\build\package\include
-LIBS += -LE:\CodeWorks\gitroot\arrayfire\build\package\lib -lafopencl
 
+# set this path to compile the code.
+#AF_PATH = ~/arrayfire
+
+INCLUDEPATH += $${AF_PATH}/include
+LIBS += -L$${AF_PATH}/lib -lafopencl -lforge
 
 SOURCES += main.cpp\
         mainwindow.cpp \
