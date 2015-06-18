@@ -19,3 +19,9 @@
 *.exe
 *.out
 *.app
+
+# build folders
+build*/
+
+# user specific files
+*.pro.user
