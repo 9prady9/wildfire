@@ -17,7 +17,7 @@ DEFINES += NOMINMAX
 #AF_PATH = ~/arrayfire
 
 INCLUDEPATH += $${AF_PATH}/include
-LIBS += -L$${AF_PATH}/lib64 -lafopencl -lforge
+LIBS += -L$${AF_PATH}/lib -laf -lforge
 
 SOURCES += main.cpp\
         mainwindow.cpp \
