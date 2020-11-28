@@ -16,7 +16,6 @@ Edit Ops Added Till Date
 Dependencies
 ------------
 * [ArrayFire]
-* [Forge]
 * [Qt5]
 
 How to use?
