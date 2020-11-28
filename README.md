@@ -34,5 +34,4 @@ qmake ../wildfire && make
 ```
 
 [ArrayFire]: https://github.com/arrayfire/arrayfire
-[Forge]: https://github.com/arrayfire/forge
 [Qt5]: http://qt-project.org/
